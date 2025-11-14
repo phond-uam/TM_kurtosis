@@ -245,7 +245,86 @@ def kurtosis_var_mean(dict_data):
 
     return time_arr, Ks, EKs, EKxs, EKys, vars, mean_xs, mean_ys, intensities
 
+# Find kurtosis of 1D profiles (better for low SNR data)
+def get_kurtosis_1d(x, data):
+    # get the kurtosis of the data
+    # get the size of the data
+    nx = len(data)
+    var = variance1D(x, data)
 
+    mean_x = np.mean(x)
+
+    S = 0
+    for i in range(0, nx):
+        S += (x[i] - mean_x)**4 * data[i]
+    S = S / data.sum()/var**2
+
+    # important! use with full profiles, 
+    # so mirror the data if azim averaged
+
+    # example, assuming 0 is center:
+    #best_azim_mirrored = np.concatenate([best_azim[::-1], best_azim])
+    #plt.figure()
+    #plt.plot( best_azim_mirrored, 'r--', label='Mirrored')
+    #kurt = get_kurtosis_1d( np.array(range(len(best_azim_mirrored)))*px_size/opt_mag, best_azim_mirrored)
+
+    return S
+
+# standalone functions to get variance and kurtosis, 
+# tested for simulated gaussians and worked well.
+
+def variance2D(X, Y, z):
+    # variance is defined as
+    # sum ( (x - mean)^2 + (y - mean)^2 ) * z / sum(z)
+    # where mean is the center of the gaussian distribution
+    # for each element in the grid
+
+    variance = 0
+    for i, x in enumerate(X):
+        for j, y in enumerate(Y):
+
+            #variance += ( (x- np.mean(X))**2   + (y-np.mean(Y))**2) * z[i, j]
+            variance += ( (x**2- np.mean(X)**2)   + (y**2-np.mean(Y)**2)) * z[i, j]
+
+    return variance / z.sum() /2
+
+# lets build a 1d, and 2d gaussian and calculate the kurtosis
+
+def get_kurtosis_2d(x, y, data):
+
+    # get the kurtosis of the data
+    # get the size of the data
+    nx = len(data)
+    ny = len(data[0])
+    var = variance2D(x, y, data)
+
+    mean_x, mean_y = get_mass_center(data)
+    mean_x = mean_x + nx//2
+    mean_y = mean_y + ny//2
+    mean_x = int(mean_x)
+    mean_y = int(mean_y)
+
+    S = np.zeros((nx, ny))
+    for i in range(0, nx):
+      for j in range(0, ny):
+        S[i][j] = ( (x[i] - x[mean_x])**4 * (y[j] - y[mean_y])**4 ) * data[i][j]
+    S = S / data.sum()/var**4
+
+    return S.sum()/3
+
+
+def variance1D(x, data):
+
+    # variance is defined as
+    # sum (x - mean)^2 * data / sum(data)
+    # where mean is the center of the gaussian distribution
+    # for each element in the grid
+
+    variance = 0
+    for i, xx in enumerate(x):
+        variance += (xx**2 - np.mean(x)**2) * data[i]
+
+    return variance / data.sum()
 
 def load_figure_3():
     # load the following datasets:
@@ -628,3 +707,158 @@ def plot_figure_2():
     plt.ylim(-0.8, 3.)
     plt.show()  
 
+#%%
+
+def kurtosis_var_mean(dict_data):
+   # open .npy file
+    #data_all = np.load(file, allow_pickle=True).item()
+    data_all = dict_data
+    time_arr = np.array(list(data_all.keys()))
+
+
+    intensities = []
+    vars = []
+    mean_xs = []
+    mean_ys = []
+    Ks = []
+    EKs = []
+    EKxs = []
+    EKys = []
+
+    for key in list(data_all.keys()):
+        data = data_all[key]
+        #ROI = make_ROI(0, 0, size = 200)
+        #data = -data[ROI[1][0]:ROI[1][1], ROI[0][0]:ROI[0][1]]
+
+        
+        small_roi = make_ROI(30, 30, size = 50)
+        intensity = data.sum()
+        intensity = -intensity
+        intensities.append(intensity)
+
+        nx = len(data)
+        ny = len(data[0])
+        mean_x = 0
+        mean_y = 0
+        mean_x2 = 0
+        mean_y2 = 0
+        K = 0
+        EK = 0
+        EKx = 0
+        EKy = 0
+        var = 0
+
+        for i in range(0, nx):
+            for j in range(0, ny):
+                mean_x = mean_x - (i - 0.5*nx + 0.5)*data[i][j]
+                mean_y = mean_y - (j - 0.5*ny + 0.5)*data[i][j]
+                mean_x2 = mean_x2 - ((i - 0.5*nx + 0.5)**2)*data[i][j]
+                mean_y2 = mean_y2 - ((j - 0.5*ny + 0.5)**2)*data[i][j]
+        mean_x = mean_x/intensity
+        mean_xs.append(mean_x)
+        mean_y = mean_y/intensity
+        mean_ys.append(mean_y)
+        mean_x2 = mean_x2/intensity
+        mean_y2 = mean_y2/intensity
+        varx = mean_x2 - mean_x**2
+        vary = mean_y2 - mean_y**2
+        var = varx + vary
+        vars.append(var)
+
+        for i in range(0, nx):
+            for j in range(0, ny):
+                x = (i - 0.5*nx + 0.5) - mean_x
+                y = (j - 0.5*ny + 0.5) - mean_y
+                r2 = x**2 + y**2
+                K = K - ((x**2/varx + y**2/vary)**2)*data[i][j]
+                EK = EK - (r2**2)*data[i][j]
+                EKx = EKx - (x**4)*data[i][j]
+                EKy = EKy - (y**4)*data[i][j]
+
+        Ks.append(K/(intensity))
+        EKs.append(EK/(intensity*var**2) - 2)
+        EKxs.append(EKx/(intensity*varx**2) - 3)
+        EKys.append(EKy/(intensity*vary**2) - 3)
+
+    return time_arr, Ks, EKs, EKxs, EKys, vars, mean_xs, mean_ys, intensities
+
+# Find kurtosis of 1D profiles (better for low SNR data)
+def get_kurtosis_1d(x, data):
+    # get the kurtosis of the data
+    # get the size of the data
+    nx = len(data)
+    var = variance1D(x, data)
+
+    mean_x = np.mean(x)
+
+    S = 0
+    for i in range(0, nx):
+        S += (x[i] - mean_x)**4 * data[i]
+    S = S / data.sum()/var**2
+
+    # important! use with full profiles, 
+    # so mirror the data if azim averaged
+
+    # example, assuming 0 is center:
+    #best_azim_mirrored = np.concatenate([best_azim[::-1], best_azim])
+    #plt.figure()
+    #plt.plot( best_azim_mirrored, 'r--', label='Mirrored')
+    #kurt = get_kurtosis_1d( np.array(range(len(best_azim_mirrored)))*px_size/opt_mag, best_azim_mirrored)
+
+    return S
+
+# standalone functions to get variance and kurtosis, 
+# tested for simulated gaussians and worked well.
+
+def variance2D(X, Y, z):
+    # variance is defined as
+    # sum ( (x - mean)^2 + (y - mean)^2 ) * z / sum(z)
+    # where mean is the center of the gaussian distribution
+    # for each element in the grid
+
+    variance = 0
+    for i, x in enumerate(X):
+        for j, y in enumerate(Y):
+
+            #variance += ( (x- np.mean(X))**2   + (y-np.mean(Y))**2) * z[i, j]
+            variance += ( (x**2- np.mean(X)**2)   + (y**2-np.mean(Y)**2)) * z[i, j]
+
+    return variance / z.sum() /2
+
+# lets build a 1d, and 2d gaussian and calculate the kurtosis
+
+def get_kurtosis_2d(x, y, data):
+
+    # get the kurtosis of the data
+    # get the size of the data
+    nx = len(data)
+    ny = len(data[0])
+    var = variance2D(x, y, data)
+
+    mean_x, mean_y = get_mass_center(data)
+    mean_x = mean_x + nx//2
+    mean_y = mean_y + ny//2
+    mean_x = int(mean_x)
+    mean_y = int(mean_y)
+
+    S = np.zeros((nx, ny))
+    for i in range(0, nx):
+      for j in range(0, ny):
+        S[i][j] = ( (x[i] - x[mean_x])**4 * (y[j] - y[mean_y])**4 ) * data[i][j]
+    S = S / data.sum()/var**4
+
+    return S.sum()/3
+
+
+def variance1D(x, data):
+
+    # variance is defined as
+    # sum (x - mean)^2 * data / sum(data)
+    # where mean is the center of the gaussian distribution
+    # for each element in the grid
+
+    variance = 0
+    for i, xx in enumerate(x):
+        variance += (xx**2 - np.mean(x)**2) * data[i]
+
+    return variance / data.sum()
