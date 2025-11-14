@@ -6,3 +6,4 @@ python3
 numpy
 matplotlib
 scipy
+matplotlib-scalebar (https://pypi.org/project/matplotlib-scalebar/)
