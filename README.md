@@ -8,6 +8,6 @@ matplotlib
 scipy
 matplotlib-scalebar (https://pypi.org/project/matplotlib-scalebar/)
 
-To run the codes download the required datasets (-repository currently private-) and unpack to a folder named 'data' at the same level as utils.
+To run the codes download the required datasets (https://doi.org/10.21950/2TSJNP) and unpack to a folder named 'data' at the same level as utils.
 All the codes will be able to run directly using python.
 
